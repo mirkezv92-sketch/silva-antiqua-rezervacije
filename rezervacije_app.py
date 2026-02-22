@@ -396,7 +396,7 @@ with st.sidebar:
     if st.session_state.admin_secret_clicked:
         st.text_input(t["lozinka"], type="password", key="admin_pass")
         admin_pass_val = st.session_state.get("admin_pass", "")
-        if admin_pass_val and admin_pass_val != "Dona2020!":
+        if admin_pass_val and admin_pass_val != st.secrets["admin_password"]:
             st.error(t["pogresna_lozinka"])
 
 # --- Logo i naslov centrirani jedan ispod drugog (logo diskretno 150–200px) ---
@@ -603,7 +603,7 @@ if is_weekend:
             confirm_reservation_dialog()
 
 # --- Admin Pregled: prikaži samo ako je u sidebaru kliknuto "." i lozinka tačna ---
-if st.session_state.admin_secret_clicked and st.session_state.get("admin_pass") == "Dona2020!":
+if st.session_state.admin_secret_clicked and st.session_state.get("admin_pass") == st.secrets["admin_password"]:
     st.divider()
     st.subheader(t["admin_pregled"])
     # Potvrda pre brisanja
