@@ -352,9 +352,13 @@ hide_st_style = '''
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
-            [data-testid="stStatusWidget"] {display: none;}
-            .stDeployButton {display:none;}
+            div[data-testid="stStatusWidget"] {display: none;}
+            .stAppDeployButton {display: none !important;}
             [data-testid="stToolbar"] {display: none !important;}
+            section[data-testid="stSidebar"] [data-testid="stToolbar"] {display: none !important;}
+            /* Ovo sakriva sivu liniju i ikonice na dnu */
+            div[data-testid="stDecoration"] {display: none !important;}
+            div[data-testid="stActionButtonIcon"] {display: none !important;}
             footer {display: none !important;}
             </style>
             '''
