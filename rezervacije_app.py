@@ -352,12 +352,21 @@ hide_st_style = '''
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
-            div[data-testid="stStatusWidget"] {display: none;}
-            .stAppDeployButton {display: none !important;}
+            div[data-testid="stStatusWidget"] {
+                display: none !important;
+            }
+            .stAppDeployButton {
+                display: none !important;
+            }
+            section[data-testid="stSidebar"] [data-testid="stToolbar"] {
+                display: none !important;
+            }
+            /* Pokušaj da se prekrije siva linija na dnu (mobilni toolbar u minus) */
+            [data-testid="stDecoration"] {
+                display: none !important;
+                height: 0px !important;
+            }
             [data-testid="stToolbar"] {display: none !important;}
-            section[data-testid="stSidebar"] [data-testid="stToolbar"] {display: none !important;}
-            /* Ovo sakriva sivu liniju i ikonice na dnu */
-            div[data-testid="stDecoration"] {display: none !important;}
             div[data-testid="stActionButtonIcon"] {display: none !important;}
             footer {display: none !important;}
             </style>
