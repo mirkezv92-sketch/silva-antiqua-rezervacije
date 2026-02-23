@@ -347,13 +347,22 @@ def to_weekend_date(d: date) -> date:
 # --- Page config: bez default opcija u meniju (gornji desni ugao) ---
 st.set_page_config(menu_items={})
 
-# --- Styling: sakrivanje footera i toolbara na dnu stranice ---
+hide_st_style = '''
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            [data-testid="stStatusWidget"] {display: none;}
+            .stDeployButton {display:none;}
+            [data-testid="stToolbar"] {display: none !important;}
+            footer {display: none !important;}
+            </style>
+            '''
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
+# --- Styling: dugmad i slot box ---
 st.markdown("""
 <style>
-    footer { visibility: hidden; }
-    footer:after { content: ""; visibility: hidden; }
-    [data-testid="stToolbar"] { display: none !important; }
-    [data-testid="stStatusWidget"] { display: none !important; }
     .stButton > button[kind="primary"] {
         background-color: #2e7d32;
         color: white;
