@@ -23,6 +23,7 @@ prevodi = {
         "datum": "Datum",
         "datum_help": "Dostupni su samo vikend termini (subota i nedelja).",
         "datum_samo_vikend": "Molimo vas, izaberite subotu ili nedelju. Muzej je otvoren za posete samo vikendom.",
+        "sezona_od": "Sezona rezervacija počinje od 14. marta 2026.",
         "termini": "Termini",
         "english_tour": "English tour",
         "prosao": "Prošao",
@@ -80,6 +81,7 @@ prevodi = {
         "datum": "Date",
         "datum_help": "Only weekend slots (Saturday and Sunday) are available.",
         "datum_samo_vikend": "Please select a Saturday or Sunday. The museum is open for visits on weekends only.",
+        "sezona_od": "Booking season starts from March 14, 2026.",
         "termini": "Time slots",
         "english_tour": "English tour",
         "prosao": "Past",
@@ -314,6 +316,7 @@ Silva Antiqua
 # --- Termini: tačno ova četiri ---
 SLOTS = ["13:00", "14:00", "15:30", "17:00"]
 ENGLISH_SLOT = "13:00"  # termin isključivo na engleskom
+MIN_BOOKING_DATE = date(2026, 3, 14)  # sezona rezervacija počinje od ovog datuma
 
 
 def get_weekend_dates(count=52 * 2):
@@ -341,9 +344,16 @@ def to_weekend_date(d: date) -> date:
     return d
 
 
-# --- Styling ---
+# --- Page config: bez default opcija u meniju (gornji desni ugao) ---
+st.set_page_config(menu_items={})
+
+# --- Styling: sakrivanje footera i toolbara na dnu stranice ---
 st.markdown("""
 <style>
+    footer { visibility: hidden; }
+    footer:after { content: ""; visibility: hidden; }
+    [data-testid="stToolbar"] { display: none !important; }
+    [data-testid="stStatusWidget"] { display: none !important; }
     .stButton > button[kind="primary"] {
         background-color: #2e7d32;
         color: white;
@@ -504,13 +514,15 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 st.divider()
 
-# Izbor datuma: klasičan kalendar (dozvoljeni samo vikend termini)
+# Izbor datuma: klasičan kalendar (min 14.03.2026, samo vikend)
 today = today_belgrade()
-first_weekend = get_weekend_dates(1)[0][0]
+min_value = max(today, MIN_BOOKING_DATE)
+first_available = to_weekend_date(min_value)
+st.caption(t["sezona_od"])
 booking_date = st.date_input(
     t["datum"],
-    value=first_weekend,
-    min_value=today,
+    value=first_available,
+    min_value=MIN_BOOKING_DATE,
     key="date_picker",
     help=t["datum_help"],
 )
