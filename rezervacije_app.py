@@ -1,4 +1,5 @@
 import os
+import base64
 import streamlit as st
 import sqlite3
 import smtplib
@@ -344,6 +345,13 @@ def to_weekend_date(d: date) -> date:
     return d
 
 
+def get_base64(bin_file: str) -> str:
+    """Čita fajl i vraća base64 string (za CSS background-image)."""
+    with open(bin_file, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+
 # --- Page config: bez default opcija u meniju (gornji desni ugao) ---
 st.set_page_config(menu_items={})
 
@@ -372,6 +380,38 @@ hide_st_style = '''
             </style>
             '''
 st.markdown(hide_st_style, unsafe_allow_html=True)
+
+# --- Pozadina aplikacije (pozadina.jpg): fiksirana, cover, centrirana; poluprovidni sloj za čitljivost ---
+BACKGROUND_IMAGE = "pozadina.jpg"
+if os.path.isfile(BACKGROUND_IMAGE):
+    bin_str = get_base64(BACKGROUND_IMAGE)
+    background_image_style = f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/jpeg;base64,{bin_str}");
+        background-attachment: fixed;
+        background-size: cover;
+        background-position: center;
+        position: relative;
+    }}
+    .stApp::before {{
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.88);
+        pointer-events: none;
+        z-index: 0;
+    }}
+    .stApp > div {{
+        position: relative;
+        z-index: 1;
+    }}
+    </style>
+    """
+    st.markdown(background_image_style, unsafe_allow_html=True)
 
 # --- Styling: dugmad i slot box ---
 st.markdown("""
