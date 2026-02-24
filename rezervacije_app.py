@@ -16,7 +16,7 @@ prevodi = {
         "info_naslov": "Muzejska poseta uz vodiča",
         "info_45min": "45 min",
         "info_klikni_adresu": "Klikni na adresu za navigaciju.",
-        "info_vodjenja": "Vođenja u muzejiću Silva Antiqua organizuju se svakog vikenda (subota i nedelja).",
+        "info_vodjenja": "Vođenja u muzejčiću Silva Antiqua organizuju se svakog vikenda (subota i nedelja).",
         "info_13h_eng": "Termin u 13:00 časova realizuje se na engleskom jeziku.",
         "info_ostali_srp": "Ostali termini su na srpskom jeziku.",
         "info_5min": "Molimo vas da dođete barem 5 minuta ranije, kako bi poseta mogla da započne na vreme.",
@@ -68,6 +68,13 @@ prevodi = {
         "br_col": "Br.",
         "day_sat": "Subota",
         "day_sun": "Nedelja",
+        "admin_panel": "Admin Panel",
+        "prijavi_se": "Prijavi se",
+        "odjavi_se": "Odjavi se",
+        "status": "Status",
+        "status_potvrdjeno": "Potvrđeno",
+        "status_otkazano": "Otkazano",
+        "status_zavrseno": "Završeno",
     },
     "ENG": {
         "naslov": "Booking",
@@ -126,6 +133,13 @@ prevodi = {
         "br_col": "No.",
         "day_sat": "Saturday",
         "day_sun": "Sunday",
+        "admin_panel": "Admin Panel",
+        "prijavi_se": "Log in",
+        "odjavi_se": "Log out",
+        "status": "Status",
+        "status_potvrdjeno": "Confirmed",
+        "status_otkazano": "Cancelled",
+        "status_zavrseno": "Completed",
     },
 }
 
@@ -175,7 +189,8 @@ def init_db():
             phone TEXT,
             email TEXT,
             num_people INTEGER NOT NULL DEFAULT 1,
-            napomena TEXT
+            napomena TEXT,
+            status TEXT NOT NULL DEFAULT 'potvrdjeno'
         )
     """)
     try:
@@ -193,15 +208,20 @@ def init_db():
         conn.commit()
     except sqlite3.OperationalError:
         pass
+    try:
+        cur.execute("ALTER TABLE reservations ADD COLUMN status TEXT NOT NULL DEFAULT 'potvrdjeno'")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
     conn.close()
 
 
 def get_slot_occupancy(booking_date: str):
-    """Vraća rečnik: slot -> ukupan broj rezervisanih mesta (suma num_people)."""
+    """Vraća rečnik: slot -> ukupan broj rezervisanih mesta (samo potvrđene; otkazane se ne računaju)."""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
-        "SELECT slot, COALESCE(SUM(num_people), 0) FROM reservations WHERE booking_date = ? GROUP BY slot",
+        "SELECT slot, COALESCE(SUM(num_people), 0) FROM reservations WHERE booking_date = ? AND COALESCE(status, 'potvrdjeno') != 'otkazano' GROUP BY slot",
         (booking_date,)
     )
     rows = cur.fetchall()
@@ -225,11 +245,19 @@ def get_all_reservations():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, slot, booking_date, name, phone, email, num_people, napomena FROM reservations ORDER BY booking_date, slot"
+        "SELECT id, slot, booking_date, name, phone, email, num_people, napomena, COALESCE(status, 'potvrdjeno') FROM reservations ORDER BY booking_date, slot"
     )
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+def update_reservation_status(reservation_id: int, status: str):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("UPDATE reservations SET status = ? WHERE id = ?", (status, reservation_id))
+    conn.commit()
+    conn.close()
 
 
 def delete_reservation(reservation_id: int):
@@ -452,38 +480,52 @@ if "confirm_clicked" not in st.session_state:
     st.session_state.confirm_clicked = False
 if "lang" not in st.session_state:
     st.session_state.lang = "SRB"
-if "admin_secret_clicked" not in st.session_state:
-    st.session_state.admin_secret_clicked = False
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
 
 t = prevodi[st.session_state.lang]
 
+# --- Sidebar: jezik + Admin login (šifra iz st.secrets) ---
 with st.sidebar:
     st.radio("Jezik / Language", options=["SRB", "ENG"], index=0 if st.session_state.lang == "SRB" else 1, key="lang")
-    # Diskretan ulaz za admina — skroz na dno sidebara
-    st.markdown("<div style='margin-top: 50vh;'></div>", unsafe_allow_html=True)
     st.markdown("---")
-    if st.button(".", key="sidebar_admin_trigger", help=""):
-        st.session_state.admin_secret_clicked = True
-        st.rerun()
-    if st.session_state.admin_secret_clicked:
-        st.text_input(t["lozinka"], type="password", key="admin_pass")
-        admin_pass_val = st.session_state.get("admin_pass", "")
-        if admin_pass_val and admin_pass_val != st.secrets["admin_password"]:
-            st.error(t["pogresna_lozinka"])
-
-# --- Logo i naslov centrirani jedan ispod drugog (logo diskretno 150–200px) ---
-LOGO_PATH = "logo.png"
-LOGO_WIDTH = 170
-head_col1, head_col2, head_col3 = st.columns([1, 2, 1])
-with head_col2:
-    if os.path.isfile(LOGO_PATH):
-        st.image(LOGO_PATH, width=LOGO_WIDTH)
+    if st.session_state.admin_authenticated:
+        if st.button(t["odjavi_se"], key="admin_logout"):
+            st.session_state.admin_authenticated = False
+            if "admin_pass" in st.session_state:
+                del st.session_state["admin_pass"]
+            st.rerun()
     else:
-        st.markdown(
-            f"""<div style="text-align:center; padding:1.5rem; background:#f0f0f0; border-radius:8px; color:#888; max-width:{LOGO_WIDTH}px; margin:0 auto;">Logo</div>""",
-            unsafe_allow_html=True,
-        )
-    st.title(t["naslov"])
+        admin_pass = st.text_input(t["lozinka"], type="password", key="admin_pass", label_visibility="collapsed", placeholder=t["lozinka"])
+        if st.button(t["prijavi_se"], key="admin_login"):
+            try:
+                secret = st.secrets.get("admin_password", "")
+                if secret and admin_pass == secret:
+                    st.session_state.admin_authenticated = True
+                    st.rerun()
+                else:
+                    st.error(t["pogresna_lozinka"])
+            except Exception:
+                st.error(t["pogresna_lozinka"])
+
+# --- Navigacija: Rezervacije + Admin Panel (samo ako je admin ulogovan) ---
+tab_names = [t["naslov"]] + ([t["admin_panel"]] if st.session_state.admin_authenticated else [])
+tabs = st.tabs(tab_names)
+
+with tabs[0]:
+    # --- Logo i naslov centrirani jedan ispod drugog (logo diskretno 150–200px) ---
+    LOGO_PATH = "logo.png"
+    LOGO_WIDTH = 170
+    head_col1, head_col2, head_col3 = st.columns([1, 2, 1])
+    with head_col2:
+        if os.path.isfile(LOGO_PATH):
+            st.image(LOGO_PATH, width=LOGO_WIDTH)
+        else:
+            st.markdown(
+                f"""<div style="text-align:center; padding:1.5rem; background:#f0f0f0; border-radius:8px; color:#888; max-width:{LOGO_WIDTH}px; margin:0 auto;">Logo</div>""",
+                unsafe_allow_html=True,
+            )
+        st.title(t["naslov"])
 
 @st.dialog(t["dialog_potvrda"], dismissible=False)
 def confirm_reservation_dialog():
@@ -551,10 +593,10 @@ def confirm_reservation_dialog():
         st.rerun()
 
 
-# Informativni blok (Calendly-style) — odmah iznad kalendara
-# URL ?q= koordinate forsira Google Maps da postavi crveni pin tačno na to mesto; target="_blank" otvara u novom tabu
-MAPS_URL = "https://www.google.com/maps?q=44.825028,20.457778"
-st.markdown(f"""
+    # Informativni blok (Calendly-style) — odmah iznad kalendara
+    # URL ?q= koordinate forsira Google Maps da postavi crveni pin tačno na to mesto; target="_blank" otvara u novom tabu
+    MAPS_URL = "https://www.google.com/maps?q=44.825028,20.457778"
+    st.markdown(f"""
 <div style="
   background-color: #e8f4fc;
   border: 1px solid #bee5eb;
@@ -574,155 +616,167 @@ st.markdown(f"""
 <p><strong>{t["cena_po_osobi"]}: {CENA_ULAZNICE_RSD} RSD</strong></p>
 </div>
 """, unsafe_allow_html=True)
-st.divider()
-
-# Izbor datuma: klasičan kalendar (min 14.03.2026, samo vikend)
-today = today_belgrade()
-min_value = max(today, MIN_BOOKING_DATE)
-first_available = to_weekend_date(min_value)
-st.caption(t["sezona_od"])
-booking_date = st.date_input(
-    t["datum"],
-    value=first_available,
-    min_value=MIN_BOOKING_DATE,
-    key="date_picker",
-    help=t["datum_help"],
-)
-is_weekend = booking_date.weekday() in (5, 6)
-if not is_weekend:
-    st.warning(t["datum_samo_vikend"])
-
-if is_weekend:
-    booking_date_str = booking_date.isoformat()
-    occupancy = get_slot_occupancy(booking_date_str)
-
-    # Grid termina (prošli termini za danas u Beogradu su sivi i nedostupni)
-    st.subheader(t["termini"])
-    cols = st.columns(3)
-    for i, slot in enumerate(SLOTS):
-        taken = occupancy.get(slot, 0)
-        free = CAPACITY_PER_SLOT - taken
-        slot_label = f"{slot} ({t['english_tour']})" if slot == ENGLISH_SLOT else slot
-        past = slot_has_passed(slot, booking_date)
-        with cols[i % 3]:
-            if past:
-                st.markdown(
-                    f'<div class="past-slot-box">{slot_label}<br><small>({t["prosao"]})</small></div>',
-                    unsafe_allow_html=True,
-                )
-            elif free <= 0:
-                btn_text = f" {slot_label} ({t['popunjeno']}) " if slot == ENGLISH_SLOT else f" {slot} ({t['popunjeno']}) "
-                st.button(
-                    btn_text,
-                    key=f"btn_{booking_date_str}_{slot}",
-                    disabled=True,
-                )
-            else:
-                label = f" {slot_label} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) " if slot == ENGLISH_SLOT else f" {slot} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) "
-                if st.button(label, key=f"btn_{booking_date_str}_{slot}", type="primary"):
-                    st.session_state.selected_slot = slot
-                    st.session_state.booking_date = booking_date_str
-                    st.session_state.free_places = free
-
-    # Forma za rezervaciju (samo za vikend)
-    if st.session_state.selected_slot:
-        slot = st.session_state.selected_slot
-        booking_date_for_slot = date.fromisoformat(st.session_state.booking_date)
-        if slot_has_passed(slot, booking_date_for_slot):
-            st.session_state.selected_slot = None
-            st.rerun()
-        occupancy_now = get_slot_occupancy(st.session_state.booking_date)
-        taken_now = occupancy_now.get(slot, 0)
-        free_places = max(0, CAPACITY_PER_SLOT - taken_now)
-        if free_places == 0:
-            st.session_state.selected_slot = None
-            st.rerun()
-        st.divider()
-        if slot == ENGLISH_SLOT:
-            st.info(f"**{t['napomena_termin_eng']}**\n\n*{t['note_english_only']}*")
-        st.subheader(f"{t['rezervisi_termin']} {slot}")
-        num_people = st.selectbox(
-            t["broj_osoba"],
-            options=list(range(1, free_places + 1)) if free_places else [1],
-            index=0,
-            key="num_people_select",
-        )
-        name = st.text_input(t["ime_prezime"], placeholder=t["ime_placeholder"], key="form_name")
-        email = st.text_input(t["email_obavezno"], placeholder=t["email_placeholder"], type="default", key="form_email")
-        napomena = st.text_area(t["dodatna_napomena"], placeholder=t["napomena_placeholder"], key="form_napomena")
-        data_consent = st.checkbox(t["gdpr_consent"], key="form_consent")
-        submitted = st.button(t["posalji_zahtev"], type="primary", disabled=not data_consent, key="form_submit")
-        if submitted:
-            name_ok = name.strip()
-            email_ok = email.strip()
-            if not data_consent:
-                st.error(t["morate_prihvatiti"])
-            elif name_ok and email_ok:
-                if "@" not in email_ok or "." not in email_ok.split("@")[-1]:
-                    st.warning(t["unesite_ispravan_email"])
-                else:
-                    st.session_state.confirm_name = name_ok
-                    st.session_state.confirm_email = email_ok
-                    st.session_state.confirm_napomena = napomena.strip() if napomena else ""
-                    st.session_state.confirm_num_people = num_people
-                    st.session_state.confirm_slot = slot
-                    st.session_state.confirm_booking_date = st.session_state.booking_date
-                    st.session_state.show_confirm_dialog = True
-                    st.session_state.confirm_clicked = False
-                    st.rerun()
-            else:
-                st.warning(t["unesite_ime_email"])
-
-        if st.session_state.get("show_confirm_dialog"):
-            confirm_reservation_dialog()
-
-# --- Admin Pregled: prikaži samo ako je u sidebaru kliknuto "." i lozinka tačna ---
-if st.session_state.admin_secret_clicked and st.session_state.get("admin_pass") == st.secrets["admin_password"]:
     st.divider()
-    st.subheader(t["admin_pregled"])
-    # Potvrda pre brisanja
-    if st.session_state.pending_delete_id is not None:
-        pid = st.session_state.pending_delete_id
-        st.warning(t["sigurni_obrisati"])
-        col_yes, col_no = st.columns(2)
-        with col_yes:
-            if st.button(t["da_obrisi"], key="confirm_del_yes"):
-                delete_reservation(pid)
-                st.session_state.pending_delete_id = None
-                st.rerun()
-        with col_no:
-            if st.button(t["ne"], key="confirm_del_no"):
-                st.session_state.pending_delete_id = None
-                st.rerun()
-        st.stop()
 
-    rows = get_all_reservations()
-    if rows:
-        # Zaglavlje tabele (bez telefona i bez kolone Cena)
-        h1, h2, h3, h4, h5, h6, h_btn = st.columns([0.5, 0.8, 1, 2, 2, 0.5, 1])
-        h1.write(f"**{t['id']}**")
-        h2.write(f"**{t['datum_col']}**")
-        h3.write(f"**{t['termin_col']}**")
-        h4.write(f"**{t['ime_col']}**")
-        h5.write(f"**{t['email_col']}**")
-        h6.write(f"**{t['br_col']}**")
-        h_btn.write("")
-        st.divider()
-        for r in rows:
-            rid = r[0]
-            # r: id, slot, booking_date, name, phone, email, num_people
-            email_val = (r[5] if len(r) > 5 else "")
-            num_people_val = (r[6] if len(r) > 6 else (r[5] if len(r) > 5 else 1))
-            c1, c2, c3, c4, c5, c6, c_btn = st.columns([0.5, 0.8, 1, 2, 2, 0.5, 1])
-            c1.write(rid)
-            c2.write(r[2])
-            c3.write(r[1])
-            c4.write(r[3])
-            c5.write(email_val)
-            c6.write(num_people_val)
-            with c_btn:
-                if st.button(t["otkazi_obrisi"], key=f"del_{rid}"):
-                    st.session_state.pending_delete_id = rid
+    # Izbor datuma: klasičan kalendar (min 14.03.2026, samo vikend)
+    today = today_belgrade()
+    min_value = max(today, MIN_BOOKING_DATE)
+    first_available = to_weekend_date(min_value)
+    st.caption(t["sezona_od"])
+    booking_date = st.date_input(
+        t["datum"],
+        value=first_available,
+        min_value=MIN_BOOKING_DATE,
+        key="date_picker",
+        help=t["datum_help"],
+    )
+    is_weekend = booking_date.weekday() in (5, 6)
+    if not is_weekend:
+        st.warning(t["datum_samo_vikend"])
+
+    if is_weekend:
+        booking_date_str = booking_date.isoformat()
+        occupancy = get_slot_occupancy(booking_date_str)
+
+        # Grid termina (prošli termini za danas u Beogradu su sivi i nedostupni)
+        st.subheader(t["termini"])
+        cols = st.columns(3)
+        for i, slot in enumerate(SLOTS):
+            taken = occupancy.get(slot, 0)
+            free = CAPACITY_PER_SLOT - taken
+            slot_label = f"{slot} ({t['english_tour']})" if slot == ENGLISH_SLOT else slot
+            past = slot_has_passed(slot, booking_date)
+            with cols[i % 3]:
+                if past:
+                    st.markdown(
+                        f'<div class="past-slot-box">{slot_label}<br><small>({t["prosao"]})</small></div>',
+                        unsafe_allow_html=True,
+                    )
+                elif free <= 0:
+                    btn_text = f" {slot_label} ({t['popunjeno']}) " if slot == ENGLISH_SLOT else f" {slot} ({t['popunjeno']}) "
+                    st.button(
+                        btn_text,
+                        key=f"btn_{booking_date_str}_{slot}",
+                        disabled=True,
+                    )
+                else:
+                    label = f" {slot_label} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) " if slot == ENGLISH_SLOT else f" {slot} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) "
+                    if st.button(label, key=f"btn_{booking_date_str}_{slot}", type="primary"):
+                        st.session_state.selected_slot = slot
+                        st.session_state.booking_date = booking_date_str
+                        st.session_state.free_places = free
+
+        # Forma za rezervaciju (samo za vikend)
+        if st.session_state.selected_slot:
+            slot = st.session_state.selected_slot
+            booking_date_for_slot = date.fromisoformat(st.session_state.booking_date)
+            if slot_has_passed(slot, booking_date_for_slot):
+                st.session_state.selected_slot = None
+                st.rerun()
+            occupancy_now = get_slot_occupancy(st.session_state.booking_date)
+            taken_now = occupancy_now.get(slot, 0)
+            free_places = max(0, CAPACITY_PER_SLOT - taken_now)
+            if free_places == 0:
+                st.session_state.selected_slot = None
+                st.rerun()
+            st.divider()
+            if slot == ENGLISH_SLOT:
+                st.info(f"**{t['napomena_termin_eng']}**\n\n*{t['note_english_only']}*")
+            st.subheader(f"{t['rezervisi_termin']} {slot}")
+            num_people = st.selectbox(
+                t["broj_osoba"],
+                options=list(range(1, free_places + 1)) if free_places else [1],
+                index=0,
+                key="num_people_select",
+            )
+            name = st.text_input(t["ime_prezime"], placeholder=t["ime_placeholder"], key="form_name")
+            email = st.text_input(t["email_obavezno"], placeholder=t["email_placeholder"], type="default", key="form_email")
+            napomena = st.text_area(t["dodatna_napomena"], placeholder=t["napomena_placeholder"], key="form_napomena")
+            data_consent = st.checkbox(t["gdpr_consent"], key="form_consent")
+            submitted = st.button(t["posalji_zahtev"], type="primary", disabled=not data_consent, key="form_submit")
+            if submitted:
+                name_ok = name.strip()
+                email_ok = email.strip()
+                if not data_consent:
+                    st.error(t["morate_prihvatiti"])
+                elif name_ok and email_ok:
+                    if "@" not in email_ok or "." not in email_ok.split("@")[-1]:
+                        st.warning(t["unesite_ispravan_email"])
+                    else:
+                        st.session_state.confirm_name = name_ok
+                        st.session_state.confirm_email = email_ok
+                        st.session_state.confirm_napomena = napomena.strip() if napomena else ""
+                        st.session_state.confirm_num_people = num_people
+                        st.session_state.confirm_slot = slot
+                        st.session_state.confirm_booking_date = st.session_state.booking_date
+                        st.session_state.show_confirm_dialog = True
+                        st.session_state.confirm_clicked = False
+                        st.rerun()
+                else:
+                    st.warning(t["unesite_ime_email"])
+
+            if st.session_state.get("show_confirm_dialog"):
+                confirm_reservation_dialog()
+
+# --- Admin Panel: samo ako je admin ulogovan (admin_authenticated), u posebnom tabu ---
+if st.session_state.admin_authenticated:
+    with tabs[1]:
+        st.subheader(t["admin_pregled"])
+        # Potvrda pre brisanja
+        if st.session_state.pending_delete_id is not None:
+            pid = st.session_state.pending_delete_id
+            st.warning(t["sigurni_obrisati"])
+            col_yes, col_no = st.columns(2)
+            with col_yes:
+                if st.button(t["da_obrisi"], key="confirm_del_yes"):
+                    delete_reservation(pid)
+                    st.session_state.pending_delete_id = None
                     st.rerun()
-    else:
-        st.info(t["nema_rezervacija"])
+            with col_no:
+                if st.button(t["ne"], key="confirm_del_no"):
+                    st.session_state.pending_delete_id = None
+                    st.rerun()
+            st.stop()
+
+        rows = get_all_reservations()
+        if rows:
+            status_options = ["potvrdjeno", "otkazano", "zavrseno"]
+            # Zaglavlje tabele: ID, Datum, Termin, Ime, Email, Br., Status, Akcije
+            h1, h2, h3, h4, h5, h6, h7, h_btn = st.columns([0.5, 0.8, 1, 1.5, 1.5, 0.4, 1, 1])
+            h1.write(f"**{t['id']}**")
+            h2.write(f"**{t['datum_col']}**")
+            h3.write(f"**{t['termin_col']}**")
+            h4.write(f"**{t['ime_col']}**")
+            h5.write(f"**{t['email_col']}**")
+            h6.write(f"**{t['br_col']}**")
+            h7.write(f"**{t['status']}**")
+            h_btn.write("")
+            st.divider()
+            for r in rows:
+                rid = r[0]
+                email_val = r[5] if len(r) > 5 else ""
+                num_people_val = r[6] if len(r) > 6 else 1
+                status_val = r[8] if len(r) > 8 else "potvrdjeno"
+                c1, c2, c3, c4, c5, c6, c7, c_btn = st.columns([0.5, 0.8, 1, 1.5, 1.5, 0.4, 1, 1])
+                c1.write(rid)
+                c2.write(r[2])
+                c3.write(r[1])
+                c4.write(r[3])
+                c5.write(email_val)
+                c6.write(num_people_val)
+                new_status = st.selectbox(
+                    t["status"],
+                    options=status_options,
+                    index=status_options.index(status_val) if status_val in status_options else 0,
+                    key=f"status_{rid}",
+                    label_visibility="collapsed",
+                )
+                if new_status != status_val:
+                    update_reservation_status(rid, new_status)
+                    st.rerun()
+                with c_btn:
+                    if st.button(t["otkazi_obrisi"], key=f"del_{rid}"):
+                        st.session_state.pending_delete_id = rid
+                        st.rerun()
+        else:
+            st.info(t["nema_rezervacija"])
