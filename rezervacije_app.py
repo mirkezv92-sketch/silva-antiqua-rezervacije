@@ -60,6 +60,7 @@ prevodi = {
         "nema_rezervacija": "Nema rezervacija.",
         "pogresna_lozinka": "Pogrešna lozinka.",
         "otkazi_obrisi": "Otkaži (Obriši)",
+        "otkazi_rezervaciju": "Otkaži rezervaciju",
         "id": "ID",
         "datum_col": "Datum",
         "termin_col": "Termin",
@@ -125,6 +126,7 @@ prevodi = {
         "nema_rezervacija": "No reservations.",
         "pogresna_lozinka": "Wrong password.",
         "otkazi_obrisi": "Cancel (Delete)",
+        "otkazi_rezervaciju": "Cancel reservation",
         "id": "ID",
         "datum_col": "Date",
         "termin_col": "Time",
@@ -409,17 +411,13 @@ hide_st_style = '''
             '''
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- Pozadina aplikacije (pozadina.jpg): fiksirana, cover, centrirana; poluprovidni sloj za čitljivost ---
+# --- Pozadina aplikacije (pozadina.jpg): zamućena, fiksirana, cover; svetli sloj za čitljivost — original Silva Antiqua stil ---
 BACKGROUND_IMAGE = "pozadina.jpg"
 if os.path.isfile(BACKGROUND_IMAGE):
     bin_str = get_base64(BACKGROUND_IMAGE)
     background_image_style = f"""
     <style>
     .stApp {{
-        background-image: url("data:image/jpeg;base64,{bin_str}");
-        background-attachment: fixed;
-        background-size: cover;
-        background-position: center;
         position: relative;
     }}
     .stApp::before {{
@@ -429,13 +427,28 @@ if os.path.isfile(BACKGROUND_IMAGE):
         left: 0;
         right: 0;
         bottom: 0;
+        background-image: url("data:image/jpeg;base64,{bin_str}");
+        background-attachment: fixed;
+        background-size: cover;
+        background-position: center;
+        filter: blur(10px);
+        transform: scale(1.08);
+        z-index: 0;
+    }}
+    .stApp::after {{
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         background: rgba(255, 255, 255, 0.88);
         pointer-events: none;
-        z-index: 0;
+        z-index: 1;
     }}
     .stApp > div {{
         position: relative;
-        z-index: 1;
+        z-index: 2;
     }}
     </style>
     """
@@ -480,36 +493,35 @@ if "confirm_clicked" not in st.session_state:
     st.session_state.confirm_clicked = False
 if "lang" not in st.session_state:
     st.session_state.lang = "SRB"
-if "admin_authenticated" not in st.session_state:
-    st.session_state.admin_authenticated = False
+if "is_admin" not in st.session_state:
+    st.session_state.is_admin = False
 
 t = prevodi[st.session_state.lang]
 
-# --- Sidebar: jezik + Admin login (šifra iz st.secrets) ---
+# --- Sidebar: jezik + Admin login (šifra iz st.secrets['admin_password']) ---
 with st.sidebar:
     st.radio("Jezik / Language", options=["SRB", "ENG"], index=0 if st.session_state.lang == "SRB" else 1, key="lang")
     st.markdown("---")
-    if st.session_state.admin_authenticated:
+    admin_pass = st.text_input("Admin Lozinka", type="password", key="admin_pass", label_visibility="visible")
+    if st.button(t["prijavi_se"], key="admin_login"):
+        try:
+            secret = st.secrets.get("admin_password", "")
+            if secret and admin_pass == secret:
+                st.session_state.is_admin = True
+                st.rerun()
+            else:
+                st.error(t["pogresna_lozinka"])
+        except Exception:
+            st.error(t["pogresna_lozinka"])
+    if st.session_state.is_admin:
         if st.button(t["odjavi_se"], key="admin_logout"):
-            st.session_state.admin_authenticated = False
+            st.session_state.is_admin = False
             if "admin_pass" in st.session_state:
                 del st.session_state["admin_pass"]
             st.rerun()
-    else:
-        admin_pass = st.text_input(t["lozinka"], type="password", key="admin_pass", label_visibility="collapsed", placeholder=t["lozinka"])
-        if st.button(t["prijavi_se"], key="admin_login"):
-            try:
-                secret = st.secrets.get("admin_password", "")
-                if secret and admin_pass == secret:
-                    st.session_state.admin_authenticated = True
-                    st.rerun()
-                else:
-                    st.error(t["pogresna_lozinka"])
-            except Exception:
-                st.error(t["pogresna_lozinka"])
 
-# --- Navigacija: Rezervacije + Admin Panel (samo ako je admin ulogovan) ---
-tab_names = [t["naslov"]] + ([t["admin_panel"]] if st.session_state.admin_authenticated else [])
+# --- Navigacija: Rezervacije + ⚙️ Admin Panel (samo ako je is_admin True) ---
+tab_names = [t["naslov"]] + (["⚙️ Admin Panel"] if st.session_state.is_admin else [])
 tabs = st.tabs(tab_names)
 
 with tabs[0]:
@@ -718,8 +730,8 @@ def confirm_reservation_dialog():
             if st.session_state.get("show_confirm_dialog"):
                 confirm_reservation_dialog()
 
-# --- Admin Panel: samo ako je admin ulogovan (admin_authenticated), u posebnom tabu ---
-if st.session_state.admin_authenticated:
+# --- Admin Panel: prikazuje se samo kada je is_admin True ---
+if st.session_state.is_admin:
     with tabs[1]:
         st.subheader(t["admin_pregled"])
         # Potvrda pre brisanja
@@ -775,7 +787,7 @@ if st.session_state.admin_authenticated:
                     update_reservation_status(rid, new_status)
                     st.rerun()
                 with c_btn:
-                    if st.button(t["otkazi_obrisi"], key=f"del_{rid}"):
+                    if st.button(t["otkazi_rezervaciju"], key=f"del_{rid}"):
                         st.session_state.pending_delete_id = rid
                         st.rerun()
         else:
