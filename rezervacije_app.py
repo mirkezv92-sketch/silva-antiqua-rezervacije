@@ -263,6 +263,7 @@ def update_reservation_status(reservation_id: int, status: str):
 
 
 def delete_reservation(reservation_id: int):
+    """Uklanja samo jednu rezervaciju po ID-u iz baze. Ostale rezervacije ostaju netaknute; termin se oslobađa u kalendaru."""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("DELETE FROM reservations WHERE id = ?", (reservation_id,))
@@ -495,27 +496,38 @@ if "lang" not in st.session_state:
     st.session_state.lang = "SRB"
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
+if "show_login" not in st.session_state:
+    st.session_state.show_login = False
 
 t = prevodi[st.session_state.lang]
 
-# --- Sidebar: jezik + Admin login (šifra iz st.secrets['admin_password']) ---
+# --- Sidebar: jezik + skriveni Admin login (fantomsko dugme → show_login → lozinka iz st.secrets) ---
 with st.sidebar:
     st.radio("Jezik / Language", options=["SRB", "ENG"], index=0 if st.session_state.lang == "SRB" else 1, key="lang")
     st.markdown("---")
-    admin_pass = st.text_input("Admin Lozinka", type="password", key="admin_pass", label_visibility="visible")
-    if st.button(t["prijavi_se"], key="admin_login"):
-        try:
-            secret = st.secrets.get("admin_password", "")
-            if secret and admin_pass == secret:
-                st.session_state.is_admin = True
-                st.rerun()
-            else:
+    # Skriveni login: prazan prostor i fantomsko dugme na dnu sidebara
+    for _ in range(3):
+        st.write("")
+    if st.button(".", key="phantom_admin_btn", help=""):
+        st.session_state.show_login = True
+        st.rerun()
+    if st.session_state.show_login:
+        admin_pass = st.text_input("Lozinka", type="password", key="admin_pass", label_visibility="visible")
+        if st.button(t["prijavi_se"], key="admin_login"):
+            try:
+                secret = st.secrets.get("admin_password", "")
+                if secret and admin_pass == secret:
+                    st.session_state.is_admin = True
+                    st.session_state.show_login = False
+                    st.rerun()
+                else:
+                    st.error(t["pogresna_lozinka"])
+            except Exception:
                 st.error(t["pogresna_lozinka"])
-        except Exception:
-            st.error(t["pogresna_lozinka"])
     if st.session_state.is_admin:
         if st.button(t["odjavi_se"], key="admin_logout"):
             st.session_state.is_admin = False
+            st.session_state.show_login = False
             if "admin_pass" in st.session_state:
                 del st.session_state["admin_pass"]
             st.rerun()
@@ -780,7 +792,7 @@ if st.session_state.is_admin:
                     update_reservation_status(rid, new_status)
                     st.rerun()
                 with c_btn:
-                    if st.button(t["otkazi_rezervaciju"], key=f"del_{rid}"):
+                    if st.button(t["otkazi_obrisi"], key=f"del_{rid}"):
                         st.session_state.pending_delete_id = rid
                         st.rerun()
         else:
