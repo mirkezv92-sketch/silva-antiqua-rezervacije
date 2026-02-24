@@ -520,25 +520,6 @@ with st.sidebar:
                 del st.session_state["admin_pass"]
             st.rerun()
 
-# --- Navigacija: Rezervacije + ⚙️ Admin Panel (samo ako je is_admin True) ---
-tab_names = [t["naslov"]] + (["⚙️ Admin Panel"] if st.session_state.is_admin else [])
-tabs = st.tabs(tab_names)
-
-with tabs[0]:
-    # --- Logo i naslov centrirani jedan ispod drugog (logo diskretno 150–200px) ---
-    LOGO_PATH = "logo.png"
-    LOGO_WIDTH = 170
-    head_col1, head_col2, head_col3 = st.columns([1, 2, 1])
-    with head_col2:
-        if os.path.isfile(LOGO_PATH):
-            st.image(LOGO_PATH, width=LOGO_WIDTH)
-        else:
-            st.markdown(
-                f"""<div style="text-align:center; padding:1.5rem; background:#f0f0f0; border-radius:8px; color:#888; max-width:{LOGO_WIDTH}px; margin:0 auto;">Logo</div>""",
-                unsafe_allow_html=True,
-            )
-        st.title(t["naslov"])
-
 @st.dialog(t["dialog_potvrda"], dismissible=False)
 def confirm_reservation_dialog():
     """Pop-up sa sumarom; POTVRDI odmah onemogućava dugme i pokreće slanje."""
@@ -604,9 +585,24 @@ def confirm_reservation_dialog():
             st.session_state.pop(key, None)
         st.rerun()
 
+# --- Navigacija: ako je admin ulogovan, tabovi; inače samo glavna stranica (kalendar + rezervacije) ---
+def render_glavna_strana():
+    """Kalendar, termini, slobodna mesta i forma za rezervaciju. Podaci se učitavaju iz baze."""
+    # --- Logo i naslov ---
+    LOGO_PATH = "logo.png"
+    LOGO_WIDTH = 170
+    head_col1, head_col2, head_col3 = st.columns([1, 2, 1])
+    with head_col2:
+        if os.path.isfile(LOGO_PATH):
+            st.image(LOGO_PATH, width=LOGO_WIDTH)
+        else:
+            st.markdown(
+                f"""<div style="text-align:center; padding:1.5rem; background:#f0f0f0; border-radius:8px; color:#888; max-width:{LOGO_WIDTH}px; margin:0 auto;">Logo</div>""",
+                unsafe_allow_html=True,
+            )
+        st.title(t["naslov"])
 
-    # Informativni blok (Calendly-style) — odmah iznad kalendara
-    # URL ?q= koordinate forsira Google Maps da postavi crveni pin tačno na to mesto; target="_blank" otvara u novom tabu
+    # Informativni blok (kartica)
     MAPS_URL = "https://www.google.com/maps?q=44.825028,20.457778"
     st.markdown(f"""
 <div style="
@@ -630,7 +626,7 @@ def confirm_reservation_dialog():
 """, unsafe_allow_html=True)
     st.divider()
 
-    # Izbor datuma: klasičan kalendar (min 14.03.2026, samo vikend)
+    # Izbor datuma (calendar picker) — samo vikend, od MIN_BOOKING_DATE
     today = today_belgrade()
     min_value = max(today, MIN_BOOKING_DATE)
     first_available = to_weekend_date(min_value)
@@ -648,9 +644,8 @@ def confirm_reservation_dialog():
 
     if is_weekend:
         booking_date_str = booking_date.isoformat()
-        occupancy = get_slot_occupancy(booking_date_str)
+        occupancy = get_slot_occupancy(booking_date_str)  # iz baze, otkazane se ne računaju
 
-        # Grid termina (prošli termini za danas u Beogradu su sivi i nedostupni)
         st.subheader(t["termini"])
         cols = st.columns(3)
         for i, slot in enumerate(SLOTS):
@@ -666,11 +661,7 @@ def confirm_reservation_dialog():
                     )
                 elif free <= 0:
                     btn_text = f" {slot_label} ({t['popunjeno']}) " if slot == ENGLISH_SLOT else f" {slot} ({t['popunjeno']}) "
-                    st.button(
-                        btn_text,
-                        key=f"btn_{booking_date_str}_{slot}",
-                        disabled=True,
-                    )
+                    st.button(btn_text, key=f"btn_{booking_date_str}_{slot}", disabled=True)
                 else:
                     label = f" {slot_label} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) " if slot == ENGLISH_SLOT else f" {slot} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) "
                     if st.button(label, key=f"btn_{booking_date_str}_{slot}", type="primary"):
@@ -678,7 +669,6 @@ def confirm_reservation_dialog():
                         st.session_state.booking_date = booking_date_str
                         st.session_state.free_places = free
 
-        # Forma za rezervaciju (samo za vikend)
         if st.session_state.selected_slot:
             slot = st.session_state.selected_slot
             booking_date_for_slot = date.fromisoformat(st.session_state.booking_date)
@@ -730,8 +720,11 @@ def confirm_reservation_dialog():
             if st.session_state.get("show_confirm_dialog"):
                 confirm_reservation_dialog()
 
-# --- Admin Panel: prikazuje se samo kada je is_admin True ---
 if st.session_state.is_admin:
+    tab_names = [t["naslov"], "⚙️ Admin Panel"]
+    tabs = st.tabs(tab_names)
+    with tabs[0]:
+        render_glavna_strana()
     with tabs[1]:
         st.subheader(t["admin_pregled"])
         # Potvrda pre brisanja
@@ -792,3 +785,5 @@ if st.session_state.is_admin:
                         st.rerun()
         else:
             st.info(t["nema_rezervacija"])
+else:
+    render_glavna_strana()
