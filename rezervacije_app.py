@@ -750,40 +750,24 @@ if st.session_state.is_admin:
 
         rows = get_all_reservations()
         if rows:
-            status_options = ["potvrdjeno", "otkazano", "zavrseno"]
-            # Zaglavlje tabele: ID, Datum, Termin, Ime, Email, Br., Status, Akcije
-            h1, h2, h3, h4, h5, h6, h7, h_btn = st.columns([0.5, 0.8, 1, 1.5, 1.5, 0.4, 1, 1])
-            h1.write(f"**{t['id']}**")
-            h2.write(f"**{t['datum_col']}**")
-            h3.write(f"**{t['termin_col']}**")
-            h4.write(f"**{t['ime_col']}**")
-            h5.write(f"**{t['email_col']}**")
-            h6.write(f"**{t['br_col']}**")
-            h7.write(f"**{t['status']}**")
-            h_btn.write("")
+            # Tabela: Ime, Datum, Termin, opcija Obriši za svaku rezervaciju
+            st.caption("Sve rezervacije iz baze. Za brisanje kliknite 'Obriši' pored željene rezervacije.")
+            h_ime, h_datum, h_termin, h_akcija = st.columns([2, 1.2, 1, 1])
+            h_ime.write(f"**{t['ime_col']}**")
+            h_datum.write(f"**{t['datum_col']}**")
+            h_termin.write(f"**{t['termin_col']}**")
+            h_akcija.write("**Akcija**")
             st.divider()
             for r in rows:
+                # r: id, slot, booking_date, name, phone, email, num_people, napomena, status
                 rid = r[0]
-                email_val = r[5] if len(r) > 5 else ""
-                num_people_val = r[6] if len(r) > 6 else 1
-                status_val = r[8] if len(r) > 8 else "potvrdjeno"
-                c1, c2, c3, c4, c5, c6, c7, c_btn = st.columns([0.5, 0.8, 1, 1.5, 1.5, 0.4, 1, 1])
-                c1.write(rid)
-                c2.write(r[2])
-                c3.write(r[1])
-                c4.write(r[3])
-                c5.write(email_val)
-                c6.write(num_people_val)
-                new_status = st.selectbox(
-                    t["status"],
-                    options=status_options,
-                    index=status_options.index(status_val) if status_val in status_options else 0,
-                    key=f"status_{rid}",
-                    label_visibility="collapsed",
-                )
-                if new_status != status_val:
-                    update_reservation_status(rid, new_status)
-                    st.rerun()
+                ime = r[3]
+                datum = r[2]
+                termin = r[1]
+                c_ime, c_datum, c_termin, c_btn = st.columns([2, 1.2, 1, 1])
+                c_ime.write(ime)
+                c_datum.write(datum)
+                c_termin.write(termin)
                 with c_btn:
                     if st.button(t["otkazi_obrisi"], key=f"del_{rid}"):
                         st.session_state.pending_delete_id = rid
