@@ -173,7 +173,7 @@ TZ_BELGRADE = pytz.timezone("Europe/Belgrade")
 
 
 def get_gsheets_conn():
-    """Return the GSheets connection (uses st.connection with secrets [connections.gsheets])."""
+    """Return the GSheets connection. Uses the Google Sheet URL from Streamlit Secrets [connections.gsheets].spreadsheet."""
     return st.connection("gsheets", type=GSheetsConnection)
 
 
@@ -648,27 +648,35 @@ def render_glavna_strana():
         occupancy = get_slot_occupancy(booking_date_str)  # iz baze, otkazane se ne računaju
 
         st.subheader(t["termini"])
-        cols = st.columns(3)
-        for i, slot in enumerate(SLOTS):
+        # Two rows of two columns so slots always appear in chronological order (13:00 → 14:00 → 15:30 → 17:00), including when columns stack on mobile
+        def render_slot(slot: str, booking_date_str: str, occupancy: dict, booking_date: date) -> None:
             taken = occupancy.get(slot, 0)
             free = CAPACITY_PER_SLOT - taken
             slot_label = f"{slot} ({t['english_tour']})" if slot == ENGLISH_SLOT else slot
             past = slot_has_passed(slot, booking_date)
-            with cols[i % 3]:
-                if past:
-                    st.markdown(
-                        f'<div class="past-slot-box">{slot_label}<br><small>({t["prosao"]})</small></div>',
-                        unsafe_allow_html=True,
-                    )
-                elif free <= 0:
-                    btn_text = f" {slot_label} ({t['popunjeno']}) " if slot == ENGLISH_SLOT else f" {slot} ({t['popunjeno']}) "
-                    st.button(btn_text, key=f"btn_{booking_date_str}_{slot}", disabled=True)
-                else:
-                    label = f" {slot_label} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) " if slot == ENGLISH_SLOT else f" {slot} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) "
-                    if st.button(label, key=f"btn_{booking_date_str}_{slot}", type="primary"):
-                        st.session_state.selected_slot = slot
-                        st.session_state.booking_date = booking_date_str
-                        st.session_state.free_places = free
+            if past:
+                st.markdown(
+                    f'<div class="past-slot-box">{slot_label}<br><small>({t["prosao"]})</small></div>',
+                    unsafe_allow_html=True,
+                )
+            elif free <= 0:
+                btn_text = f" {slot_label} ({t['popunjeno']}) " if slot == ENGLISH_SLOT else f" {slot} ({t['popunjeno']}) "
+                st.button(btn_text, key=f"btn_{booking_date_str}_{slot}", disabled=True)
+            else:
+                label = f" {slot_label} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) " if slot == ENGLISH_SLOT else f" {slot} ({t['slobodno']}: {free}/{CAPACITY_PER_SLOT}) "
+                if st.button(label, key=f"btn_{booking_date_str}_{slot}", type="primary"):
+                    st.session_state.selected_slot = slot
+                    st.session_state.booking_date = booking_date_str
+                    st.session_state.free_places = free
+
+        row1 = st.columns(2)
+        for j, slot in enumerate(SLOTS[:2]):
+            with row1[j]:
+                render_slot(slot, booking_date_str, occupancy, booking_date)
+        row2 = st.columns(2)
+        for j, slot in enumerate(SLOTS[2:]):
+            with row2[j]:
+                render_slot(slot, booking_date_str, occupancy, booking_date)
 
         if st.session_state.selected_slot:
             slot = st.session_state.selected_slot
