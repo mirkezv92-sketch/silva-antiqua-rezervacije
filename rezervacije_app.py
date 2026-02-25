@@ -3,6 +3,7 @@ import base64
 import streamlit as st
 import sqlite3
 import smtplib
+import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import date, datetime, timedelta
@@ -727,6 +728,32 @@ def render_glavna_strana():
             if "admin_pass" in st.session_state:
                 del st.session_state["admin_pass"]
             st.rerun()
+        # Tabela sa SVIM rezervacijama iz rezervacije.db odmah ispod poruke
+        rows = get_all_reservations()
+        if rows:
+            df_data = []
+            for r in rows:
+                rid, slot, booking_date, name, email, num_people = r[0], r[1], r[2], r[3], r[4] or "", r[5]
+                df_data.append({
+                    "ID": rid,
+                    "Ime i prezime": name,
+                    "Email": email,
+                    "Broj osoba": num_people,
+                    "Datum": booking_date,
+                    "Vreme": slot,
+                })
+            df = pd.DataFrame(df_data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.caption("Spisak svih rezervacija. Za brisanje izaberite ID ispod i kliknite 'Otkaži (Obriši) rezervaciju'.")
+            col_id, col_btn = st.columns([1, 2])
+            with col_id:
+                delete_id = st.number_input("ID rezervacije za brisanje", min_value=min(r[0] for r in rows) if rows else 0, max_value=max(r[0] for r in rows) if rows else 0, value=min(r[0] for r in rows) if rows else 0, key="admin_delete_id")
+            with col_btn:
+                if st.button("Otkaži (Obriši) rezervaciju", key="admin_do_delete"):
+                    delete_reservation(int(delete_id))
+                    st.rerun()
+        else:
+            st.info(t["nema_zakazanih"])
 
 if st.session_state.is_admin:
     tab_names = [t["naslov"], "⚙️ Admin Panel"]
@@ -735,7 +762,7 @@ if st.session_state.is_admin:
         render_glavna_strana()
     with tabs[1]:
         st.subheader(t["admin_pregled"])
-        # Potvrda pre brisanja
+        # Potvrda pre brisanja (ako je kliknuto Otkaži u tabeli ispod)
         if st.session_state.pending_delete_id is not None:
             pid = st.session_state.pending_delete_id
             st.warning(t["sigurni_obrisati"])
@@ -753,26 +780,37 @@ if st.session_state.is_admin:
 
         rows = get_all_reservations()
         if rows:
-            # Tabela iz baze: Ime i prezime, Email, Datum, Vreme, Broj osoba, Akcija (Otkaži rezervaciju)
-            st.caption("Sve rezervacije iz rezervacije.db. Za brisanje kliknite 'Otkaži rezervaciju'.")
-            h_ime, h_email, h_datum, h_vreme, h_br, h_akcija = st.columns([2, 2, 1.2, 0.8, 0.6, 1.2])
-            h_ime.write(f"**{t['ime_col']}**")
-            h_email.write(f"**{t['email_col']}**")
-            h_datum.write(f"**{t['datum_col']}**")
-            h_vreme.write("**Vreme**")
-            h_br.write(f"**{t['br_col']}**")
-            h_akcija.write("**Akcija**")
-            st.divider()
+            df_data = []
             for r in rows:
                 rid, slot, booking_date, name, email, num_people = r[0], r[1], r[2], r[3], r[4] or "", r[5]
-                c_ime, c_email, c_datum, c_vreme, c_br, c_btn = st.columns([2, 2, 1.2, 0.8, 0.6, 1.2])
-                c_ime.write(name)
-                c_email.write(email)
-                c_datum.write(booking_date)
-                c_vreme.write(slot)
-                c_br.write(num_people)
-                with c_btn:
-                    if st.button(t["otkazi_rezervaciju"], key=f"del_{rid}"):
+                df_data.append({
+                    "ID": rid,
+                    "Ime i prezime": name,
+                    "Email": email,
+                    "Broj osoba": num_people,
+                    "Datum": booking_date,
+                    "Vreme": slot,
+                })
+            df = pd.DataFrame(df_data)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.caption("Spisak svih rezervacija. Za brisanje izaberite ID ispod ili kliknite 'Otkaži' pored reda.")
+            # Brisanje po ID-u
+            col_a, col_b = st.columns(2)
+            with col_a:
+                delete_id_tab = st.number_input("ID rezervacije za brisanje", min_value=min(r[0] for r in rows), max_value=max(r[0] for r in rows), value=min(r[0] for r in rows), key="admin_tab_delete_id")
+            with col_b:
+                if st.button("Otkaži (Obriši) rezervaciju", key="admin_tab_do_delete"):
+                    delete_reservation(int(delete_id_tab))
+                    st.rerun()
+            st.divider()
+            # Dugme pored svakog reda (za brzo brisanje)
+            for r in rows:
+                rid, slot, booking_date, name, email, num_people = r[0], r[1], r[2], r[3], r[4] or "", r[5]
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    st.caption(f"ID {rid} — {name}, {booking_date} {slot}, {num_people} os.")
+                with c2:
+                    if st.button(t["otkazi_obrisi"], key=f"tab_del_{rid}"):
                         st.session_state.pending_delete_id = rid
                         st.rerun()
         else:
