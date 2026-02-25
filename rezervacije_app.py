@@ -499,29 +499,9 @@ if "is_admin" not in st.session_state:
 
 t = prevodi[st.session_state.lang]
 
-# --- Sidebar: UVEK vidljiv. Admin Panel na vidljivom mestu — polje za lozinku i Prijavi se. ---
+# --- Sidebar: samo naslov i jezik (admin login je ispod rezervacija u glavnom sadržaju) ---
 st.sidebar.title("Silva Antiqua")
 st.sidebar.radio("Jezik / Language", options=["SRB", "ENG"], index=0 if st.session_state.lang == "SRB" else 1, key="lang")
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Admin Panel")
-admin_pass = st.sidebar.text_input("Admin Pass", type="password", key="admin_pass", label_visibility="visible")
-if st.sidebar.button(t["prijavi_se"], key="admin_login"):
-    try:
-        secret = st.secrets.get("admin_password", "")
-        if secret and admin_pass == secret:
-            st.session_state.is_admin = True
-            st.rerun()
-        else:
-            st.sidebar.error(t["pogresna_lozinka"])
-    except Exception:
-        st.sidebar.error(t["pogresna_lozinka"])
-if st.session_state.is_admin:
-    st.sidebar.success("Ulogovani ste kao admin.")
-    if st.sidebar.button(t["odjavi_se"], key="admin_logout"):
-        st.session_state.is_admin = False
-        if "admin_pass" in st.session_state:
-            del st.session_state["admin_pass"]
-        st.rerun()
 
 @st.dialog(t["dialog_potvrda"], dismissible=False)
 def confirm_reservation_dialog():
@@ -722,6 +702,28 @@ def render_glavna_strana():
 
             if st.session_state.get("show_confirm_dialog"):
                 confirm_reservation_dialog()
+
+    # Admin login na dnu, ispod rezervacija (ispod dugmeta "Pošalji zahtev")
+    st.divider()
+    st.subheader("⚙️ Admin Panel")
+    admin_pass = st.text_input("Admin Pass", type="password", key="admin_pass", label_visibility="visible")
+    if st.button(t["prijavi_se"], key="admin_login"):
+        try:
+            secret = st.secrets.get("admin_password", "")
+            if secret and admin_pass == secret:
+                st.session_state.is_admin = True
+                st.rerun()
+            else:
+                st.error(t["pogresna_lozinka"])
+        except Exception:
+            st.error(t["pogresna_lozinka"])
+    if st.session_state.is_admin:
+        st.success("Ulogovani ste kao admin.")
+        if st.button(t["odjavi_se"], key="admin_logout"):
+            st.session_state.is_admin = False
+            if "admin_pass" in st.session_state:
+                del st.session_state["admin_pass"]
+            st.rerun()
 
 if st.session_state.is_admin:
     tab_names = [t["naslov"], "⚙️ Admin Panel"]
