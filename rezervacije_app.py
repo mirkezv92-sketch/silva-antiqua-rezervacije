@@ -58,6 +58,7 @@ prevodi = {
         "da_obrisi": "Da, obriši",
         "ne": "Ne",
         "nema_rezervacija": "Nema rezervacija.",
+        "nema_zakazanih": "Trenutno nema zakazanih termina.",
         "pogresna_lozinka": "Pogrešna lozinka.",
         "otkazi_obrisi": "Otkaži (Obriši)",
         "otkazi_rezervaciju": "Otkaži rezervaciju",
@@ -124,6 +125,7 @@ prevodi = {
         "da_obrisi": "Yes, delete",
         "ne": "No",
         "nema_rezervacija": "No reservations.",
+        "nema_zakazanih": "There are no booked slots at the moment.",
         "pogresna_lozinka": "Wrong password.",
         "otkazi_obrisi": "Cancel (Delete)",
         "otkazi_rezervaciju": "Cancel reservation",
@@ -244,10 +246,11 @@ def save_reservation(slot: str, booking_date: str, name: str, email: str, num_pe
 
 
 def get_all_reservations():
+    """Povlači SVE rezervacije iz rezervacije.db. Hronološki: najnoviji datumi na vrhu."""
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
-        "SELECT id, slot, booking_date, name, phone, email, num_people, napomena, COALESCE(status, 'potvrdjeno') FROM reservations ORDER BY booking_date, slot"
+        "SELECT id, slot, booking_date, name, email, num_people FROM reservations ORDER BY booking_date DESC, slot"
     )
     rows = cur.fetchall()
     conn.close()
@@ -750,29 +753,29 @@ if st.session_state.is_admin:
 
         rows = get_all_reservations()
         if rows:
-            # Tabela: Ime, Datum, Termin, opcija Obriši za svaku rezervaciju
-            st.caption("Sve rezervacije iz baze. Za brisanje kliknite 'Obriši' pored željene rezervacije.")
-            h_ime, h_datum, h_termin, h_akcija = st.columns([2, 1.2, 1, 1])
+            # Tabela iz baze: Ime i prezime, Email, Datum, Vreme, Broj osoba, Akcija (Otkaži rezervaciju)
+            st.caption("Sve rezervacije iz rezervacije.db. Za brisanje kliknite 'Otkaži rezervaciju'.")
+            h_ime, h_email, h_datum, h_vreme, h_br, h_akcija = st.columns([2, 2, 1.2, 0.8, 0.6, 1.2])
             h_ime.write(f"**{t['ime_col']}**")
+            h_email.write(f"**{t['email_col']}**")
             h_datum.write(f"**{t['datum_col']}**")
-            h_termin.write(f"**{t['termin_col']}**")
+            h_vreme.write("**Vreme**")
+            h_br.write(f"**{t['br_col']}**")
             h_akcija.write("**Akcija**")
             st.divider()
             for r in rows:
-                # r: id, slot, booking_date, name, phone, email, num_people, napomena, status
-                rid = r[0]
-                ime = r[3]
-                datum = r[2]
-                termin = r[1]
-                c_ime, c_datum, c_termin, c_btn = st.columns([2, 1.2, 1, 1])
-                c_ime.write(ime)
-                c_datum.write(datum)
-                c_termin.write(termin)
+                rid, slot, booking_date, name, email, num_people = r[0], r[1], r[2], r[3], r[4] or "", r[5]
+                c_ime, c_email, c_datum, c_vreme, c_br, c_btn = st.columns([2, 2, 1.2, 0.8, 0.6, 1.2])
+                c_ime.write(name)
+                c_email.write(email)
+                c_datum.write(booking_date)
+                c_vreme.write(slot)
+                c_br.write(num_people)
                 with c_btn:
-                    if st.button(t["otkazi_obrisi"], key=f"del_{rid}"):
+                    if st.button(t["otkazi_rezervaciju"], key=f"del_{rid}"):
                         st.session_state.pending_delete_id = rid
                         st.rerun()
         else:
-            st.info(t["nema_rezervacija"])
+            st.info(t["nema_zakazanih"])
 else:
     render_glavna_strana()
