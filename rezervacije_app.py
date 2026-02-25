@@ -496,36 +496,29 @@ if "lang" not in st.session_state:
     st.session_state.lang = "SRB"
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
-if "show_login" not in st.session_state:
-    st.session_state.show_login = False
 
 t = prevodi[st.session_state.lang]
 
-# --- Sidebar: UVEK vidljiv, na početku. Naslov "Silva Antiqua" + klik ispod naslova otvara Admin Pass. ---
+# --- Sidebar: UVEK vidljiv. Admin Panel na vidljivom mestu — polje za lozinku i Prijavi se. ---
 st.sidebar.title("Silva Antiqua")
-# Mali nevidljivi dugme odmah ispod naslova: klik otvara polje za lozinku
-if st.sidebar.button(".", key="open_admin_btn", help="Admin"):
-    st.session_state.show_login = True
-    st.rerun()
 st.sidebar.radio("Jezik / Language", options=["SRB", "ENG"], index=0 if st.session_state.lang == "SRB" else 1, key="lang")
 st.sidebar.markdown("---")
-if st.session_state.show_login:
-    admin_pass = st.sidebar.text_input("Admin Pass", type="password", key="admin_pass", label_visibility="visible")
-    if st.sidebar.button(t["prijavi_se"], key="admin_login"):
-        try:
-            secret = st.secrets.get("admin_password", "")
-            if secret and admin_pass == secret:
-                st.session_state.is_admin = True
-                st.session_state.show_login = False
-                st.rerun()
-            else:
-                st.sidebar.error(t["pogresna_lozinka"])
-        except Exception:
+st.sidebar.subheader("⚙️ Admin Panel")
+admin_pass = st.sidebar.text_input("Admin Pass", type="password", key="admin_pass", label_visibility="visible")
+if st.sidebar.button(t["prijavi_se"], key="admin_login"):
+    try:
+        secret = st.secrets.get("admin_password", "")
+        if secret and admin_pass == secret:
+            st.session_state.is_admin = True
+            st.rerun()
+        else:
             st.sidebar.error(t["pogresna_lozinka"])
+    except Exception:
+        st.sidebar.error(t["pogresna_lozinka"])
 if st.session_state.is_admin:
+    st.sidebar.success("Ulogovani ste kao admin.")
     if st.sidebar.button(t["odjavi_se"], key="admin_logout"):
         st.session_state.is_admin = False
-        st.session_state.show_login = False
         if "admin_pass" in st.session_state:
             del st.session_state["admin_pass"]
         st.rerun()
