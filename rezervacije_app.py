@@ -11,8 +11,25 @@ import pytz
 from streamlit_gsheets import GSheetsConnection
 
 # Google Sheet: create a worksheet named "Rezervacije" with header row: id, slot, booking_date, name, email, num_people, napomena, status
+# All dates are stored and read as YYYY-MM-DD so reservation counts per day stay accurate.
 WORKSHEET_NAME = "Rezervacije"
 SHEET_COLUMNS = ["id", "slot", "booking_date", "name", "email", "num_people", "napomena", "status"]
+
+
+def _date_to_yyyy_mm_dd(value) -> str:
+    """Normalize any date value from the sheet or UI to YYYY-MM-DD string."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).strip()
+    if not s:
+        return ""
+    if len(s) == 10 and s[4] == "-" and s[7] == "-":  # already YYYY-MM-DD
+        return s
+    try:
+        d = pd.to_datetime(s)
+        return d.strftime("%Y-%m-%d")
+    except Exception:
+        return s
 
 # --- Prevodi (samo tekst koji korisnik vidi; baza i mejl ključevi ostaju isti) ---
 prevodi = {
@@ -176,6 +193,8 @@ def get_sheet_df(ttl=0):
     df = df[SHEET_COLUMNS].copy()
     df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
     df["num_people"] = pd.to_numeric(df["num_people"], errors="coerce").fillna(1).astype(int)
+    # Normalize booking_date to YYYY-MM-DD for consistent filtering and display
+    df["booking_date"] = df["booking_date"].astype(object).map(_date_to_yyyy_mm_dd)
     return df
 
 
@@ -214,22 +233,24 @@ def get_slot_occupancy(booking_date: str):
     df = get_sheet_df(ttl=0)
     if df.empty or "slot" not in df.columns:
         return {}
-    df_date = df[df["booking_date"].astype(str).str.strip() == str(booking_date).strip()]
+    target_date = _date_to_yyyy_mm_dd(booking_date)
+    df_date = df[df["booking_date"].astype(str).str.strip() == target_date]
     df_active = df_date[df_date["status"].fillna("potvrdjeno").astype(str).str.strip().str.lower() != "otkazano"]
     agg = df_active.groupby("slot", dropna=False)["num_people"].sum()
     return agg.to_dict()
 
 
 def save_reservation(slot: str, booking_date: str, name: str, email: str, num_people: int, napomena: str = ""):
-    """Append one reservation as a new row in the Google Sheet."""
+    """Append one reservation as a new row in the Google Sheet. booking_date is stored as YYYY-MM-DD."""
     napomena_val = (napomena.strip() if napomena else "") or "Nema napomene"
+    date_str = _date_to_yyyy_mm_dd(booking_date)
     conn = get_gsheets_conn()
     df = get_sheet_df(ttl=0)
     next_id = (int(df["id"].max()) + 1) if (len(df) > 0 and "id" in df.columns and df["id"].notna().any()) else 1
     new_row = pd.DataFrame([{
         "id": next_id,
         "slot": slot,
-        "booking_date": booking_date,
+        "booking_date": date_str,
         "name": name.strip(),
         "email": email.strip(),
         "num_people": num_people,
