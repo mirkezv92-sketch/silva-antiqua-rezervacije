@@ -1,7 +1,6 @@
 import os
 import base64
 import streamlit as st
-import sqlite3
 import smtplib
 import pandas as pd
 from email.mime.text import MIMEText
@@ -9,6 +8,11 @@ from email.mime.multipart import MIMEMultipart
 from datetime import date, datetime, timedelta
 
 import pytz
+from streamlit_gsheets import GSheetsConnection
+
+# Google Sheet: create a worksheet named "Rezervacije" with header row: id, slot, booking_date, name, email, num_people, napomena, status
+WORKSHEET_NAME = "Rezervacije"
+SHEET_COLUMNS = ["id", "slot", "booking_date", "name", "email", "num_people", "napomena", "status"]
 
 # --- Prevodi (samo tekst koji korisnik vidi; baza i mejl ključevi ostaju isti) ---
 prevodi = {
@@ -148,8 +152,31 @@ prevodi = {
     },
 }
 
-DB_PATH = "rezervacije.db"
 TZ_BELGRADE = pytz.timezone("Europe/Belgrade")
+
+
+def get_gsheets_conn():
+    """Return the GSheets connection (uses st.connection with secrets [connections.gsheets])."""
+    return st.connection("gsheets", type=GSheetsConnection)
+
+
+def get_sheet_df(ttl=0):
+    """Read reservations from Google Sheet. Returns DataFrame with SHEET_COLUMNS; empty if sheet empty."""
+    conn = get_gsheets_conn()
+    try:
+        df = conn.read(worksheet=WORKSHEET_NAME, ttl=ttl)
+    except Exception:
+        return pd.DataFrame(columns=SHEET_COLUMNS)
+    if df is None or df.empty:
+        return pd.DataFrame(columns=SHEET_COLUMNS)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    for col in SHEET_COLUMNS:
+        if col not in df.columns:
+            df[col] = "" if col not in ("id", "num_people") else (0 if col == "id" else 1)
+    df = df[SHEET_COLUMNS].copy()
+    df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
+    df["num_people"] = pd.to_numeric(df["num_people"], errors="coerce").fillna(1).astype(int)
+    return df
 
 
 def now_belgrade():
@@ -181,98 +208,66 @@ EMAIL_PASSWORD = "fwen vtdy dhpj fich"
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
 
-# --- Baza ---
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS reservations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            slot TEXT NOT NULL,
-            booking_date TEXT NOT NULL,
-            name TEXT NOT NULL,
-            phone TEXT,
-            email TEXT,
-            num_people INTEGER NOT NULL DEFAULT 1,
-            napomena TEXT,
-            status TEXT NOT NULL DEFAULT 'potvrdjeno'
-        )
-    """)
-    try:
-        cur.execute("ALTER TABLE reservations ADD COLUMN napomena TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cur.execute("ALTER TABLE reservations ADD COLUMN num_people INTEGER NOT NULL DEFAULT 1")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cur.execute("ALTER TABLE reservations ADD COLUMN email TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cur.execute("ALTER TABLE reservations ADD COLUMN status TEXT NOT NULL DEFAULT 'potvrdjeno'")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-    conn.close()
-
-
+# --- Google Sheets (rezervacije) ---
 def get_slot_occupancy(booking_date: str):
     """Vraća rečnik: slot -> ukupan broj rezervisanih mesta (samo potvrđene; otkazane se ne računaju)."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT slot, COALESCE(SUM(num_people), 0) FROM reservations WHERE booking_date = ? AND COALESCE(status, 'potvrdjeno') != 'otkazano' GROUP BY slot",
-        (booking_date,)
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return {r[0]: r[1] for r in rows}
+    df = get_sheet_df(ttl=0)
+    if df.empty or "slot" not in df.columns:
+        return {}
+    df_date = df[df["booking_date"].astype(str).str.strip() == str(booking_date).strip()]
+    df_active = df_date[df_date["status"].fillna("potvrdjeno").astype(str).str.strip().str.lower() != "otkazano"]
+    agg = df_active.groupby("slot", dropna=False)["num_people"].sum()
+    return agg.to_dict()
 
 
 def save_reservation(slot: str, booking_date: str, name: str, email: str, num_people: int, napomena: str = ""):
+    """Append one reservation as a new row in the Google Sheet."""
     napomena_val = (napomena.strip() if napomena else "") or "Nema napomene"
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO reservations (slot, booking_date, name, phone, email, num_people, napomena) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (slot, booking_date, name, "", email.strip(), num_people, napomena_val)
-    )
-    conn.commit()
-    conn.close()
+    conn = get_gsheets_conn()
+    df = get_sheet_df(ttl=0)
+    next_id = (int(df["id"].max()) + 1) if (len(df) > 0 and "id" in df.columns and df["id"].notna().any()) else 1
+    new_row = pd.DataFrame([{
+        "id": next_id,
+        "slot": slot,
+        "booking_date": booking_date,
+        "name": name.strip(),
+        "email": email.strip(),
+        "num_people": num_people,
+        "napomena": napomena_val,
+        "status": "potvrdjeno",
+    }])
+    out = pd.concat([df, new_row], ignore_index=True)
+    out = out[SHEET_COLUMNS]
+    conn.update(worksheet=WORKSHEET_NAME, data=out)
 
 
 def get_all_reservations():
-    """Povlači SVE rezervacije iz rezervacije.db. Hronološki: najnoviji datumi na vrhu."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id, slot, booking_date, name, email, num_people FROM reservations ORDER BY booking_date DESC, slot"
-    )
-    rows = cur.fetchall()
-    conn.close()
+    """Povlači SVE rezervacije iz Google Sheet. Hronološki: najnoviji datumi na vrhu."""
+    df = get_sheet_df(ttl=0)
+    if df.empty:
+        return []
+    df = df.sort_values(by=["booking_date", "slot"], ascending=[False, True])
+    rows = []
+    for _, r in df.iterrows():
+        rows.append((
+            int(r["id"]) if pd.notna(r.get("id")) else 0,
+            str(r.get("slot", "")),
+            str(r.get("booking_date", "")),
+            str(r.get("name", "")),
+            str(r.get("email", "")),
+            int(r["num_people"]) if pd.notna(r.get("num_people")) else 1,
+        ))
     return rows
 
 
-def update_reservation_status(reservation_id: int, status: str):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("UPDATE reservations SET status = ? WHERE id = ?", (status, reservation_id))
-    conn.commit()
-    conn.close()
-
-
 def delete_reservation(reservation_id: int):
-    """Uklanja samo jednu rezervaciju po ID-u iz baze. Ostale rezervacije ostaju netaknute; termin se oslobađa u kalendaru."""
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM reservations WHERE id = ?", (reservation_id,))
-    conn.commit()
-    conn.close()
+    """Uklanja rezervaciju po ID-u iz Google Sheet (briše odgovarajući red)."""
+    conn = get_gsheets_conn()
+    df = get_sheet_df(ttl=0)
+    df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
+    out = df[df["id"] != reservation_id].copy()
+    out = out[SHEET_COLUMNS]
+    conn.update(worksheet=WORKSHEET_NAME, data=out)
 
 
 def send_confirmation_email(to_email: str, name: str, slot: str, booking_date: str, num_people: int, is_english_slot: bool) -> bool:
@@ -483,8 +478,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-init_db()
 
 if "selected_slot" not in st.session_state:
     st.session_state.selected_slot = None
