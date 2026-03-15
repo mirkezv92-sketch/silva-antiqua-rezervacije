@@ -38,14 +38,14 @@ prevodi = {
         "info_naslov": "Muzejska poseta uz vodiča",
         "info_45min": "45 min",
         "info_klikni_adresu": "Klikni na adresu za navigaciju.",
-        "info_vodjenja": "Vođenja u muzejčiću Silva Antiqua organizuju se svakog vikenda (subota i nedelja).",
+        "info_vodjenja": "Vođenja u muzejčiću Silva Antiqua organizuju se svake subote.",
         "info_13h_eng": "Termin u 13:00 časova realizuje se na engleskom jeziku.",
         "info_ostali_srp": "Ostali termini su na srpskom jeziku.",
         "info_5min": "Molimo vas da dođete barem 5 minuta ranije, kako bi poseta mogla da započne na vreme.",
         "cena_po_osobi": "Cena ulaznice po osobi",
         "datum": "Datum",
-        "datum_help": "Dostupni su samo vikend termini (subota i nedelja).",
-        "datum_samo_vikend": "Molimo vas, izaberite subotu ili nedelju. Muzej je otvoren za posete samo vikendom.",
+        "datum_help": "Dostupni su samo subotnji termini.",
+        "datum_samo_subota": "Molimo vas, izaberite subotu. Muzej je otvoren za posete samo subotom.",
         "sezona_od": "Sezona rezervacija počinje od 14. marta 2026.",
         "termini": "Termini",
         "english_tour": "English tour",
@@ -91,7 +91,6 @@ prevodi = {
         "email_col": "Email",
         "br_col": "Br.",
         "day_sat": "Subota",
-        "day_sun": "Nedelja",
         "admin_panel": "Admin Panel",
         "prijavi_se": "Prijavi se",
         "odjavi_se": "Odjavi se",
@@ -105,14 +104,14 @@ prevodi = {
         "info_naslov": "Guided museum visit",
         "info_45min": "45 min",
         "info_klikni_adresu": "Click on the address for directions.",
-        "info_vodjenja": "Guided tours at Silva Antiqua take place every weekend (Saturday and Sunday).",
+        "info_vodjenja": "Guided tours at Silva Antiqua take place every Saturday.",
         "info_13h_eng": "The 13:00 slot is conducted in English.",
         "info_ostali_srp": "Other slots are in Serbian.",
         "info_5min": "Please arrive at least 5 minutes early so the visit can start on time.",
         "cena_po_osobi": "Admission per person",
         "datum": "Date",
-        "datum_help": "Only weekend slots (Saturday and Sunday) are available.",
-        "datum_samo_vikend": "Please select a Saturday or Sunday. The museum is open for visits on weekends only.",
+        "datum_help": "Only Saturday slots are available.",
+        "datum_samo_subota": "Please select a Saturday. The museum is open for visits on Saturdays only.",
         "sezona_od": "Booking season starts from March 14, 2026.",
         "termini": "Time slots",
         "english_tour": "English tour",
@@ -158,7 +157,6 @@ prevodi = {
         "email_col": "Email",
         "br_col": "No.",
         "day_sat": "Saturday",
-        "day_sun": "Sunday",
         "admin_panel": "Admin Panel",
         "prijavi_se": "Log in",
         "odjavi_se": "Log out",
@@ -365,35 +363,16 @@ Silva Antiqua
         return False
 
 
-# --- Termini: tačno ova četiri ---
-SLOTS = ["13:00", "14:00", "15:30", "17:00"]
+# --- Termini: samo 13:00, 14:00 i 16:00 ---
+SLOTS = ["13:00", "14:00", "16:00"]
 ENGLISH_SLOT = "13:00"  # termin isključivo na engleskom
 MIN_BOOKING_DATE = date(2026, 3, 14)  # sezona rezervacija počinje od ovog datuma
 
 
-def get_weekend_dates(count=52 * 2):
-    """Lista samo subota i nedelja od danas, da korisnik može da bira samo vikend."""
-    out = []
-    d = today_belgrade()
-    if d.weekday() < 5:
-        d += timedelta(days=(5 - d.weekday()))
-    elif d.weekday() == 6:
-        d += timedelta(days=6)
-    while len(out) < count:
-        if d.weekday() == 5:
-            out.append((d, f"Subota, {d.strftime('%d.%m.%Y')}"))
-        elif d.weekday() == 6:
-            out.append((d, f"Nedelja, {d.strftime('%d.%m.%Y')}"))
-        d += timedelta(days=1)
-    return out
-
-
-def to_weekend_date(d: date) -> date:
-    """Ako je d radni dan, vraća narednu subotu; inače vraća d (subota ili nedelja)."""
-    w = d.weekday()
-    if w < 5:
-        return d + timedelta(days=5 - w)
-    return d
+def to_saturday_date(d: date) -> date:
+    """Vraća narednu subotu od datuma d (uključujući d ako je već subota)."""
+    days_ahead = (5 - d.weekday()) % 7
+    return d + timedelta(days=days_ahead)
 
 
 def get_base64(bin_file: str) -> str:
@@ -529,8 +508,7 @@ def confirm_reservation_dialog():
     booking_date_str = st.session_state.get("confirm_booking_date", "")
     num_people = st.session_state.get("confirm_num_people", 1)
     d = datetime.strptime(booking_date_str, "%Y-%m-%d").date()
-    day_name = t["day_sun"] if d.weekday() == 6 else t["day_sat"]
-    datum_str = f"{day_name}, {d.strftime('%d.%m.%Y')}"
+    datum_str = f"{t['day_sat']}, {d.strftime('%d.%m.%Y')}"
     st.markdown(
         f"**{t['dialog_potvrda']}:** {datum_str} u **{slot}**. Za **{num_people}** {t['za_osoba']}."
     )
@@ -627,10 +605,10 @@ def render_glavna_strana():
 """, unsafe_allow_html=True)
     st.divider()
 
-    # Izbor datuma (calendar picker) — samo vikend, od MIN_BOOKING_DATE
+    # Izbor datuma — samo subota, od MIN_BOOKING_DATE
     today = today_belgrade()
     min_value = max(today, MIN_BOOKING_DATE)
-    first_available = to_weekend_date(min_value)
+    first_available = to_saturday_date(min_value)
     st.caption(t["sezona_od"])
     booking_date = st.date_input(
         t["datum"],
@@ -639,16 +617,16 @@ def render_glavna_strana():
         key="date_picker",
         help=t["datum_help"],
     )
-    is_weekend = booking_date.weekday() in (5, 6)
-    if not is_weekend:
-        st.warning(t["datum_samo_vikend"])
+    is_saturday = booking_date.weekday() == 5
+    if not is_saturday:
+        st.warning(t["datum_samo_subota"])
 
-    if is_weekend:
+    if is_saturday:
         booking_date_str = booking_date.isoformat()
         occupancy = get_slot_occupancy(booking_date_str)  # iz baze, otkazane se ne računaju
 
         st.subheader(t["termini"])
-        # Two rows of two columns so slots always appear in chronological order (13:00 → 14:00 → 15:30 → 17:00), including when columns stack on mobile
+        # Jedan red od tri kolone: 13:00, 14:00, 16:00
         def render_slot(slot: str, booking_date_str: str, occupancy: dict, booking_date: date) -> None:
             taken = occupancy.get(slot, 0)
             free = CAPACITY_PER_SLOT - taken
@@ -669,13 +647,9 @@ def render_glavna_strana():
                     st.session_state.booking_date = booking_date_str
                     st.session_state.free_places = free
 
-        row1 = st.columns(2)
-        for j, slot in enumerate(SLOTS[:2]):
-            with row1[j]:
-                render_slot(slot, booking_date_str, occupancy, booking_date)
-        row2 = st.columns(2)
-        for j, slot in enumerate(SLOTS[2:]):
-            with row2[j]:
+        slot_cols = st.columns(3)
+        for j, slot in enumerate(SLOTS):
+            with slot_cols[j]:
                 render_slot(slot, booking_date_str, occupancy, booking_date)
 
         if st.session_state.selected_slot:
