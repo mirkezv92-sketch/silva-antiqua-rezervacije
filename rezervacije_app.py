@@ -647,7 +647,7 @@ def render_glavna_strana():
                     st.session_state.booking_date = booking_date_str
                     st.session_state.free_places = free
 
-        slot_cols = st.columns(3)
+        slot_cols = st.columns(len(SLOTS))
         for j, slot in enumerate(SLOTS):
             with slot_cols[j]:
                 render_slot(slot, booking_date_str, occupancy, booking_date)
