@@ -364,7 +364,7 @@ Silva Antiqua
 
 
 # --- Termini: samo 13:00, 14:00 i 16:00 ---
-SLOTS = ["13:00", "14:00", "16:00"]
+SLOTS = ["13:00", "14:00", "15:00", "16:00"]
 ENGLISH_SLOT = "13:00"  # termin isključivo na engleskom
 MIN_BOOKING_DATE = date(2026, 3, 14)  # sezona rezervacija počinje od ovog datuma
 
